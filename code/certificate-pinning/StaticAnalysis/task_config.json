@@ -1,0 +1,25 @@
+{
+  "carlotta_iot": {
+    "network_security_config": [
+      "com.tao.wiz.655.apk",
+      "com.soul.taoyedeng.39.apk",
+      "com.xiaomi.smarthome.65455.apk",
+      "com.ikea.tradfri.lighting.267.apk",
+      "com.nut.blehunter.20211020.apk",
+      "cn.xiaofengkj.fitpro.83.apk",
+      "com.bose.monet.119.apk",
+      "com.divoom.Divoom.172.apk",
+      "com.lscsmartconnection.smart.14.apk",
+      "com.lenzetech.kindelf.111175.apk",
+      "com.hombli.smart.9.apk",
+      "com.hama.smart.29.apk",
+      "com.fitbit.FitbitMobile.20243491.apk",
+      "com.lenzetech.antilost.16.apk",
+      "com.lifx.lifx.10277.apk",
+      "com.oceanwing.soundcore.87.apk",
+      "com.tuya.smartlife.389.apk",
+      "com.signify.hue.blue.9306.apk",
+      "com.huahuacaocao.flowercare.3070.apk"
+    ]
+  }
+}
