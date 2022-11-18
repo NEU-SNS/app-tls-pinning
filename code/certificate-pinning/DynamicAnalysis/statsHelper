@@ -1,0 +1,79 @@
+#!/bin/bash
+
+CURRENT_DIR="$(dirname "$(readlink -f "$0")")"
+LOGS_DIR="$CURRENT_DIR/mitm-logs/"
+PII_FILE="json/grep_pii.json"
+STATS_ADDON_SCRIPT="./stats_scripts/stats_addon.py"
+
+REFERER_CHAIN_SCRIPT="./stats_scripts/referer_chain_addon.py"
+INITIAL_REFERER_FILE="initial_referers.json"
+
+function usage() {
+    echo "Usage: $ME <command> <path>*"
+}
+
+function help() {
+    echo "This script helps process test logs."
+    echo
+    usage
+    echo
+    echo Commands                  Arguments    Info
+    echo ============================================================================================
+    echo
+    echo "(gen|compile)mitm        <path> <failed/summary.json>      Process logs at the given path."
+}
+
+function permcheck() {
+    if ! [ $(id -u) = 0 ]; then
+       echo "Permission denied (you must be root)"
+       exit 1
+    fi
+}
+
+function paramcheck() {
+    if [ "$2" -ne "$1" ]; then
+        echo "Please supply path to process stats..."
+        exit 1
+    fi
+}
+
+function dircheck() {
+    if [ ! -d $1 ]; then
+        echo "$1 does not exist :/"
+        exit 1
+    fi
+}
+
+function genmitm() {
+    LOGS_DIR="$2/logs"
+    FAILED_HADSHAKES="$3"
+    PII_FILE="$2/grep_pii.json"
+    ALL_STATS="$2/all_stats.json"
+    dircheck $LOGS_DIR
+    echo "Overwriting $ALL_STATS file with placeholder empty JSON."
+    echo "{}" > "$ALL_STATS"
+    for dumpfile in `ls $LOGS_DIR/*.dump`
+    do
+        echo "bruh $FAILED_HADSHAKES $PII_FILE $STATS_ADDON_SCRIPT"
+        mitmdump --set failedhandshakes="$FAILED_HADSHAKES" --set pii="$PII_FILE" --set results="$ALL_STATS" -s $STATS_ADDON_SCRIPT -r "$dumpfile"
+    done
+}
+
+function compilemitm() {
+    cleanmitm $@
+    # compilefsmon ${@:2}
+    echo "Compiling csvs..."
+    $GEN_CSV_SCRIPT "${@:2}"
+    echo "Generating UA stats..."
+    $UA_STATS_SCRIPT "${@:2}"
+}
+
+if [ "$1" == "genmitm" ]; then
+    paramcheck 3 $#
+    genmitm $@
+
+elif [ "$1" == "compilemitm" ]; then
+    compilemitm $@
+else
+    help
+fi

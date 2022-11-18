@@ -1,0 +1,147 @@
+#!/bin/bash
+
+# This script manages the MITM daemon (currently mitmdump).
+
+CURRENT_DIR="$(dirname "$(readlink -f "$0")")"
+LOGS_DIR="$CURRENT_DIR/mitm-logs/"
+
+### BEGIN OF CONFIGURATION SECTION ###
+
+# MITM_INTERFACE: network interface to MITM
+MITM_INTERFACE="wlp2s0"
+# MITM_PORTS: TCP ports to MITM (HTTP and HTTPS). Please use commas to separate them.
+MITM_PORTS="1:65535"
+# MITM_LISTENING_PORT: TCP listening port used by mitmdump
+MITM_LISTENING_PORT="10443"
+# MITM_DUMP: File containing MITM traffic
+# Default dump file, gets rewritten in start by the cli flag
+MITM_DUMP="$LOGS_DIR/mitm.dump"
+# MITM_LOG: Log file for mitmdump
+MITM_LOG="$LOGS_DIR/mitm.log"
+# MTIM_CONF: Config file directory for mitmdump (it contains certificates)
+MITM_CONF="$CURRENT_DIR/mitm-conf/"
+
+###################################################################################
+## Mitmdump seems to have some versioning problems with the dump files that are  ##
+## generated and later parsed, for the time being, lets use binaries on the repo ##
+## to make sure that the version is consistent across tests.                     ##
+###################################################################################
+MITMDUMP_BINARY="$CURRENT_DIR/bins/mitmdump"
+
+### END OF CONFIGURATION SECTION ###
+
+function usage()
+{
+    echo "Usage: $ME <start log_file_name|stop|restart|status|help>"
+}
+
+function help()
+{
+    echo "This script manages the activation status of a transparent mitmproxy."
+    echo "For configuration, please edit the header of this script."
+    echo
+    usage
+    echo
+    echo "start         Start transparent mitmproxy capture and add iptables rules."
+    echo "              REQUIRES <results_dir> <log_names> <second_log_name>"
+    echo
+    echo "stop          Stop transparent mitmproxy capture and remove iptables rules."
+    echo
+    echo "restart       Restarts transparents mitmproxy capture and reset iptables rules."
+    echo
+    echo "status        Query the current status of mitmproxy capture."
+}
+
+function mitm-status {
+    PIDS=$(pgrep mitmdump)
+
+    if [ -n "$PIDS" ] ; then
+        echo mitmdump is started on the following PIDs: $PIDS
+        return 1
+    else
+        echo mitmdump is not started
+        return 0
+    fi
+}
+
+function mitm-stop()
+{
+    # Stop TCPDump logging.
+    killall tcpdump
+    # Reset firewall rules
+    iptables -t nat -D PREROUTING -j MITM &> /dev/null
+    iptables -t nat -F MITM &> /dev/null
+    iptables -t nat -X MITM &> /dev/null
+
+    mitm-status &> /dev/null
+    if [ $? == "0" ]; then
+         echo "No mitmdump instances found"
+         exit 0
+    fi
+
+    # Kill existing mitmdump processes
+    PIDS=$(pgrep mitmdump)
+
+    if [ -n "$PIDS" ] ; then
+        echo "Stopping mitmdump. PID: $PIDS"
+        kill $PIDS
+    fi
+}
+
+function mitm-start()
+{
+    mitm-status &> /dev/null
+    if [ $? == "1" ]; then
+         echo "Failed: capture using mitmproxy is already started"
+         mitm-stop
+         sleep 5
+         mitm-start
+    fi
+
+    # Make directory before running commands
+    mkdir -p $MITM_CONF $LOGS_DIR
+
+    # Reset firwall rules
+    iptables -t nat -N MITM &> /dev/null
+    iptables -t nat -F MITM
+    iptables -t nat -D PREROUTING -j MITM &> /dev/null
+    iptables -t nat -A PREROUTING -j MITM
+    iptables -t nat -A MITM -i $MITM_INTERFACE -p tcp -m tcp -m multiport --dports $MITM_PORTS -j REDIRECT --to-ports $MITM_LISTENING_PORT
+    # iptables -t nat -A MITM -i $MITM_INTERFACE -p udp --dport 53 -j REDIRECT --to-port 41234
+    iptables -A INPUT -i $MITM_INTERFACE -p udp -m udp -m multiport --dports 1:52,54:65535 -j DROP
+
+    killall tcpdump # Just to be sure.
+    nohup tcpdump -i $MITM_INTERFACE -s0 -w $TCPDUMP_LOG > /dev/null 2>&1 & disown
+    SSLKEYLOGFILE="$LOGS_DIR/../sslkeylogfile.txt" $MITMDUMP_BINARY --set confdir="$MITM_CONF" --mode transparent -p $MITM_LISTENING_PORT -w +$MITM_DUMP --ssl-insecure >> $MITM_LOG 2>&1 &
+    disown
+
+    echo "Starting mitmdump. Log file: $MITM_LOG"
+}
+
+if ! [ $(id -u) = 0 ]; then
+   echo "Permission denied (you must be root)"
+   exit 1
+fi
+
+if [ "$1" == "start" ]; then
+    if [ "$#" -ne 3 ]; then
+        echo "Please supply second flag for dump/log files and third flag for action..."
+        exit 1
+    fi
+    LOGS_DIR="$2/logs/"
+    MITM_DUMP="$LOGS_DIR/$3.dump"
+    MITM_LOG="$LOGS_DIR/$3.log"
+    TCPDUMP_LOG="$LOGS_DIR/$3.pcap"
+    mitm-start
+elif [ "$1" == "stop" ]; then
+    mitm-stop
+elif [ "$1" == "restart" ]; then
+    mitm-stop
+    sleep 1
+    mitm-start
+elif [ "$1" == "status" ]; then
+    mitm-status
+    exit $?
+else
+    help
+fi

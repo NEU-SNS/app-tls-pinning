@@ -1,0 +1,6 @@
+*.json
+*.csv
+*.pdf
+
+dynamic_results/
+/code/temp_images/
